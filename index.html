@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>EditFlow Pro - OTP Enterprise</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/@emailjs/browser@3/dist/email.min.js"></script>
+    
+    <style>
+        :root { --side: #0f172a; --bg: #f1f5f9; --blue: #3b82f6; --orange: #fb923c; --white: #fff; }
+        * { margin:0; padding:0; box-sizing:border-box; font-family: 'Inter', sans-serif; }
+        body { background: var(--bg); display: flex; min-height: 100vh; overflow-x: hidden; }
+
+        /* --- OTP LOGIN SCREEN --- */
+        #auth-screen { height:100vh; width:100vw; display:flex; justify-content:center; align-items:center; background:linear-gradient(135deg, #64748b 0%, #0f172a 100%); position:fixed; z-index:10000; }
+        .auth-box { background:var(--white); padding:50px; border-radius:30px; width:420px; text-align:center; box-shadow:0 30px 60px rgba(0,0,0,0.3); }
+        .auth-input { width:100%; padding:15px; margin-bottom:15px; border:2px solid #e2e8f0; border-radius:14px; outline:none; font-size: 16px; }
+        .btn-p { background:var(--blue); color:white; border:none; padding:15px 25px; border-radius:14px; cursor:pointer; font-weight:bold; width:100%; font-size: 16px; transition: 0.3s; }
+        .btn-p:hover { transform: translateY(-2px); box-shadow: 0 10px 20px rgba(59, 130, 246, 0.2); }
+
+        /* --- SIDEBAR --- */
+        .sidebar { width:260px; height:100vh; background:var(--side); color:white; position:fixed; padding:30px 20px; display:flex; flex-direction:column; z-index: 100; }
+        .nav-item { padding:15px; color:#94a3b8; cursor:pointer; border-radius:12px; margin-bottom:10px; display:flex; align-items:center; gap:12px; transition: 0.3s; }
+        .nav-item.active { background:#1e293b; color:white; border-left:4px solid var(--blue); }
+
+        /* --- CONTENT --- */
+        .content { margin-left:260px; padding:40px; width:calc(100% - 260px); }
+        .stats-grid { display:grid; grid-template-columns:repeat(auto-fit, minmax(200px, 1fr)); gap:25px; margin-bottom:40px; }
+        .stat-card { background:white; padding:30px; border-radius:24px; box-shadow:0 10px 25px rgba(0,0,0,0.03); border-bottom: 6px solid #e2e8f0; }
+        .table-card { background:white; border-radius:24px; padding:30px; box-shadow:0 10px 25px rgba(0,0,0,0.03); overflow-x:auto; margin-bottom: 30px; }
+        
+        table { width:100%; border-collapse:collapse; }
+        th { padding:18px; text-align:left; color: #64748b; border-bottom: 2px solid #f1f5f9; font-size: 13px; }
+        td { padding:18px; border-bottom: 1px solid #f1f5f9; font-size: 15px; }
+
+        /* --- TEMPLATES --- */
+        #invoice-template, #report-template { width:850px; background:white; padding:60px; position:fixed; left:-5000px; }
+        .sig-font { font-family: 'Brush Script MT', cursive; font-size:55px; }
+
+        @media (max-width:1024px) {
+            .sidebar { width:80px; } .sidebar h2, .nav-item span { display:none; }
+            .content { margin-left:80px; width:calc(100% - 80px); }
+        }
+    </style>
+</head>
+<body>
+
+    <div id="auth-screen">
+        <div class="auth-box">
+            <h1 style="margin-bottom: 20px;">EF <span style="color:var(--orange)">PRO</span></h1>
+            
+            <div id="email-step">
+                <p style="margin-bottom:20px; color:#64748b;">Enter Gmail to receive OTP</p>
+                <input type="email" id="user-email" placeholder="example@gmail.com" class="auth-input">
+                <button class="btn-p" onclick="sendOTP()">SEND OTP</button>
+            </div>
+
+            <div id="otp-step" style="display:none;">
+                <p style="margin-bottom:20px; color:#64748b;">Enter 6-Digit Code</p>
+                <input type="number" id="otp-input" placeholder="000000" class="auth-input">
+                <button class="btn-p" onclick="verifyOTP()">VERIFY & LOGIN</button>
+                <button onclick="location.reload()" style="background:none; border:none; color:var(--blue); margin-top:15px; cursor:pointer;">Edit Email</button>
+            </div>
+        </div>
+    </div>
+
+    <aside class="sidebar" id="sidebar-ui" style="display:none;">
+        <h2 style="color:var(--orange); text-align:center; margin-bottom:40px;">EDITFLOW</h2>
+        <div class="nav-item active" id="n-dash" onclick="showTab('dash')"><i class="fas fa-th-large"></i> <span>Dashboard</span></div>
+        <div class="nav-item" id="n-find" onclick="showTab('find')"><i class="fas fa-search"></i> <span>Find Bill</span></div>
+        <div class="nav-item" id="n-hist" onclick="showTab('hist')"><i class="fas fa-history"></i> <span>History Reports</span></div>
+        <div class="nav-item admin-only" id="n-bill" onclick="showTab('bill')"><i class="fas fa-file-invoice-dollar"></i> <span>Create Bill</span></div>
+        <button onclick="logout()" style="margin-top:auto; background:#ef4444;" class="btn-p">LOGOUT</button>
+    </aside>
+
+    <main class="content" id="main-ui" style="display:none;">
+        
+        <div id="tab-dash" class="tab-content">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:30px;">
+                <h1>Dashboard</h1>
+                <button class="btn-p admin-only" style="width:auto;" onclick="openAdd()">+ NEW PROJECT</button>
+            </div>
+            <div class="stats-grid">
+                <div class="stat-card"><h3>TOTAL</h3><h2 id="s-total">0</h2></div>
+                <div class="stat-card"><h3>COLLECTED</h3><h2 id="s-rev" style="color:#10b981">$0</h2></div>
+                <div class="stat-card"><h3>DUE</h3><h2 id="s-due" style="color:#ef4444">$0</h2></div>
+            </div>
+            <div class="table-card">
+                <table>
+                    <thead><tr><th>Bill No.</th><th>Client</th><th>Budget</th><th>Advance</th><th>Balance</th><th>Status</th><th class="admin-only">Action</th></tr></thead>
+                    <tbody id="dash-list"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="tab-find" class="tab-content" style="display:none;">
+            <h1>Search Bill</h1>
+            <div class="table-card" style="max-width:500px;">
+                <input type="number" id="find-no" placeholder="Enter Bill No." class="auth-input">
+                <button class="btn-p" onclick="findBillDetail()">SEE DETAILS</button>
+            </div>
+            <div id="f-result" class="table-card" style="margin-top:20px; display:none; border:2px solid var(--blue);">
+                <h2 id="fd-name" style="color:var(--blue)"></h2>
+                <div id="fd-data" style="margin:20px 0; line-height:2;"></div>
+                <button class="btn-p" style="background:#10b981" onclick="downloadFindPic()">DOWNLOAD IMAGE</button>
+            </div>
+        </div>
+
+        <div id="tab-hist" class="tab-content" style="display:none;">
+            <h1>Reports</h1>
+            <div class="table-card" style="display:flex; gap:15px; align-items:center;">
+                <input type="date" id="start-d" class="auth-input" style="margin:0; width:180px;">
+                <span>to</span>
+                <input type="date" id="end-d" class="auth-input" style="margin:0; width:180px;">
+                <button class="btn-p" style="width:auto;" onclick="dlReport('Custom')">GET REPORT PIC</button>
+            </div>
+            <div class="table-card">
+                <table id="hist-table">
+                    <thead><tr><th>Date</th><th>Client</th><th>Amount</th><th>Status</th></tr></thead>
+                    <tbody id="hist-list"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="tab-bill" class="tab-content admin-only" style="display:none;">
+            <h1>Create Bill</h1>
+            <div class="table-card" style="max-width:600px;">
+                <input type="text" id="b-client" placeholder="Client Name" class="auth-input">
+                <div id="items-box">
+                    <div class="item-row" style="display:flex; gap:10px; margin-bottom:10px;">
+                        <input type="text" placeholder="Work" class="auth-input d-in" style="flex:2;">
+                        <input type="number" placeholder="$" class="auth-input p-in" style="flex:1;">
+                    </div>
+                </div>
+                <button onclick="addItemRow()" style="color:var(--blue); border:none; background:none; cursor:pointer; margin-bottom:15px;">+ Add Item</button>
+                <input type="number" id="b-adv" placeholder="Advance Received" class="auth-input">
+                <button class="btn-p" onclick="makeBill()">DOWNLOAD BILL IMAGE</button>
+            </div>
+        </div>
+    </main>
+
+    <div id="p-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:11000; justify-content:center; align-items:center;">
+        <div class="table-card" style="width:400px;">
+            <h3>New Entry</h3>
+            <input type="text" id="p-name" placeholder="Client Name" class="auth-input">
+            <input type="number" id="p-cost" placeholder="Total Budget" class="auth-input">
+            <input type="number" id="p-adv" placeholder="Advance Received" class="auth-input">
+            <input type="text" id="p-work" placeholder="Work (e.g. Reel Edit)" class="auth-input">
+            <button class="btn-p" onclick="saveProject()">SAVE PROJECT</button>
+            <button onclick="document.getElementById('p-modal').style.display='none'" style="margin-top:10px; border:none; background:none; width:100%;">Cancel</button>
+        </div>
+    </div>
+
+    <div id="invoice-template">
+        <h1 style="color:#3b82f6; border-bottom:5px solid #3b82f6; padding-bottom:20px;">INVOICE</h1>
+        <div style="margin:40px 0;"><h3>Bill To:</h3><h1 id="i-client" style="font-size:40px;"></h1><p id="i-date"></p><p id="i-num"></p></div>
+        <table style="width:100%; border-collapse:collapse; margin-bottom:30px;">
+            <thead style="background:#f8fafc"><tr><th style="padding:15px;">Description</th><th style="text-align:right; padding:15px;">Price</th></tr></thead>
+            <tbody id="i-body"></tbody>
+        </table>
+        <div style="text-align:right;"><p>Total: <b id="i-total"></b></p><p>Paid: <b id="i-adv"></b></p><h2 style="color:#3b82f6; font-size:35px;">Due: <span id="i-due"></span></h2></div>
+        <div style="margin-top:80px; text-align:right;"><p class="sig-font">H.K.Patel</p><p>Authorized Sign</p></div>
+    </div>
+
+    <div id="report-template">
+        <h1 style="text-align:center; border-bottom:4px solid var(--blue); padding-bottom:20px;" id="r-title">Report</h1>
+        <table style="width:100%; margin-top:30px; border-collapse:collapse;">
+            <thead><tr style="background:#f1f5f9;"><th>Date</th><th>Client</th><th>Amount</th><th>Status</th></tr></thead>
+            <tbody id="r-body"></tbody>
+        </table>
+        <div style="text-align:right; margin-top:30px;"><h2 id="r-total"></h2></div>
+    </div>
+
+    <script>
+        // --- 1. OTP CONFIG (IDS DALEIN) ---
+        emailjs.init("00E5EtbMzt3eQP1wE"); // <-- ACCOUNT TAB SE PUBLIC KEY YAHAN DALO
+
+        let generatedOTP, userEmail, currentPass;
+        let globalDB = JSON.parse(localStorage.getItem('ef_db')) || {};
+        let myData = [], searchP = null;
+
+        // Auto-login if session exists
+        window.onload = () => { 
+            const session = localStorage.getItem('ef_session_email');
+            if(session) { userEmail = session; finishLogin(); }
+        };
+
+        function sendOTP() {
+            userEmail = document.getElementById('user-email').value;
+            if(!userEmail.includes("@")) return alert("Email dalo!");
+
+            generatedOTP = Math.floor(100000 + Math.random() * 900000);
+            
+            // Image 7 & 9 ke mutabik variables set kiye hain
+            const params = {
+                email: userEmail,       // {{email}}
+                passcode: generatedOTP, // {{passcode}}
+                time: "15 minutes"      // {{time}}
+            };
+
+            emailjs.send("service_olyktti", "template_7fqo0sq", params) // <-- TEMPLATE ID YAHAN DALO
+                .then(() => {
+                    alert("OTP bhej diya!");
+                    document.getElementById('email-step').style.display = 'none';
+                    document.getElementById('otp-step').style.display = 'block';
+                }, (err) => alert("Failed: " + JSON.stringify(err)));
+        }
+
+        function verifyOTP() {
+            const entered = document.getElementById('otp-input').value;
+            if(entered == generatedOTP || entered == "0000") { // Admin bypass
+                localStorage.setItem('ef_session_email', userEmail);
+                finishLogin();
+            } else alert("Galat OTP!");
+        }
+
+        function finishLogin() {
+            document.getElementById('auth-screen').style.display = 'none';
+            document.getElementById('sidebar-ui').style.display = 'flex';
+            document.getElementById('main-ui').style.display = 'block';
+            
+            // User-specific data key
+            currentPass = userEmail;
+            if(!globalDB[currentPass]) globalDB[currentPass] = [];
+            myData = globalDB[currentPass];
+
+            if(userEmail !== 'smitpatel24500@gmail.com') { // Admin restriction
+                document.querySelectorAll('.admin-only').forEach(e => e.style.display='none');
+            }
+            updateUI();
+        }
+
+        function updateUI() {
+            const list = document.getElementById('dash-list'), hList = document.getElementById('hist-list');
+            list.innerHTML = ""; hList.innerHTML = ""; let col = 0, due = 0;
+
+            myData.forEach((p, i) => {
+                const bal = p.cost - (p.adv || 0), isD = p.status === 'Completed';
+                list.innerHTML += `<tr><td>#${i+1}</td><td><b>${p.name}</b></td><td>$${p.cost}</td><td>$${p.adv || 0}</td><td style="color:red">$${bal}</td><td>${p.status}</td><td class="admin-only"><button onclick="done(${i})" style="color:green; border:none; background:none; cursor:pointer;"><i class="fas fa-check"></i></button> <button onclick="del(${i})" style="color:red; border:none; background:none; cursor:pointer; margin-left:15px;"><i class="fas fa-trash"></i></button></td></tr>`;
+                hList.innerHTML += `<tr><td>${p.date}</td><td>${p.name}</td><td>$${p.cost}</td><td>${p.status}</td></tr>`;
+                col += Number(p.adv || 0); if(!isD) due += Number(bal); else col += Number(bal);
+            });
+
+            document.getElementById('s-total').innerText = myData.length;
+            document.getElementById('s-rev').innerText = "$" + col;
+            document.getElementById('s-due').innerText = "$" + due;
+            globalDB[currentPass] = myData; localStorage.setItem('ef_db', JSON.stringify(globalDB));
+        }
+
+        function saveProject() {
+            const d = new Date();
+            myData.push({ name: document.getElementById('p-name').value, cost: Number(document.getElementById('p-cost').value), adv: Number(document.getElementById('p-adv').value || 0), work: document.getElementById('p-work').value || "Edit Work", status: 'Pending', date: d.toLocaleDateString(), rawDate: d.toISOString().split('T')[0] });
+            updateUI(); document.getElementById('p-modal').style.display = 'none';
+        }
+
+        function findBillDetail() {
+            const n = parseInt(document.getElementById('find-no').value); const p = myData[n-1];
+            if(!p) return alert("Nahi mila!");
+            searchP = { ...p, bNo: n };
+            document.getElementById('fd-name').innerText = p.name;
+            document.getElementById('fd-data').innerHTML = `<b>Bill No:</b> #${n} <br> <b>Detail:</b> ${p.work} <br> <b>Total:</b> $${p.cost} <br> <b>Due:</b> $${p.cost - (p.adv || 0)}`;
+            document.getElementById('f-result').style.display = 'block';
+        }
+
+        function downloadFindPic() {
+            if(!searchP) return; const p = searchP;
+            document.getElementById('i-client').innerText = p.name;
+            document.getElementById('i-date').innerText = p.date;
+            document.getElementById('i-num').innerText = "Bill No: #" + p.bNo;
+            document.getElementById('i-body').innerHTML = `<tr><td style="padding:15px;">${p.work}</td><td style="text-align:right">$${p.cost}</td></tr>`;
+            document.getElementById('i-total').innerText = "$" + p.cost;
+            document.getElementById('i-adv').innerText = "$" + (p.adv || 0);
+            document.getElementById('i-due').innerText = "$" + (p.cost - (p.adv || 0));
+            savePic('invoice-template', "Bill_#"+p.bNo);
+        }
+
+        function dlReport(t) {
+            const s = document.getElementById('start-d').value, e = document.getElementById('end-d').value;
+            const filtered = t === 'Custom' ? myData.filter(p => p.rawDate >= s && p.rawDate <= e) : myData;
+            const rb = document.getElementById('r-body'); rb.innerHTML = ""; let tot = 0;
+            filtered.forEach(p => { rb.innerHTML += `<tr><td>${p.date}</td><td>${p.name}</td><td>$${p.cost}</td><td>${p.status}</td></tr>`; tot += Number(p.cost); });
+            document.getElementById('r-total').innerText = "Total: $" + tot;
+            savePic('report-template', "Report");
+        }
+
+        function savePic(id, name) {
+            const el = document.getElementById(id); el.style.left = "0";
+            html2canvas(el, { scale: 2 }).then(canvas => {
+                const a = document.createElement('a'); a.download = name + ".png"; a.href = canvas.toDataURL(); a.click(); el.style.left = "-5000px";
+            });
+        }
+
+        function makeBill() {
+            const c = document.getElementById('b-client').value;
+            document.getElementById('i-client').innerText = c;
+            document.getElementById('i-date').innerText = new Date().toLocaleDateString();
+            document.getElementById('i-num').innerText = "Invoice";
+            const bBody = document.getElementById('i-body'); bBody.innerHTML = ""; let t = 0;
+            document.querySelectorAll('.item-row').forEach(r => {
+                const d = r.querySelector('.d-in').value, p = r.querySelector('.p-in').value;
+                if(d && p) { t += Number(p); bBody.innerHTML += `<tr><td style="padding:15px;">${d}</td><td style="text-align:right">$${p}</td></tr>`; }
+            });
+            document.getElementById('i-total').innerText = "$" + t;
+            const ad = Number(document.getElementById('b-adv').value || 0);
+            document.getElementById('i-adv').innerText = "$" + ad;
+            document.getElementById('i-due').innerText = "$" + (t - ad);
+            savePic('invoice-template', "Bill_" + c);
+        }
+
+        function showTab(id) {
+            document.querySelectorAll('.tab-content').forEach(t => t.style.display='none');
+            document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+            document.getElementById('tab-'+id).style.display='block';
+            document.getElementById('n-'+id).classList.add('active');
+        }
+        function addItemRow() {
+            const d = document.createElement('div'); d.className='item-row'; d.style='display:flex; gap:10px; margin-bottom:10px;';
+            d.innerHTML = `<input type="text" class="auth-input d-in" style="flex:2;"><input type="number" class="auth-input p-in" style="flex:1;">`;
+            document.getElementById('items-box').appendChild(d);
+        }
+        function openAdd() { document.getElementById('p-modal').style.display='flex'; }
+        function done(i) { myData[i].status = 'Completed'; updateUI(); }
+        function del(i) { if(confirm("Delete?")) { myData.splice(i,1); updateUI(); } }
+        function logout() { localStorage.clear(); location.reload(); }
+    </script>
+</body>
+</html>
